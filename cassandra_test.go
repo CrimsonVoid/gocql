@@ -2577,3 +2577,63 @@ func TestControl_DiscoverProtocol(t *testing.T) {
 		t.Fatal("did not discovery protocol")
 	}
 }
+
+func TestSlice(t *testing.T) {
+	session := createSession(t)
+	defer session.Close()
+	if err := createTable(session, `CREATE TABLE gocql_test.slice_map_table (
+			testuuid       timeuuid PRIMARY KEY,
+			testtimestamp  timestamp,
+			testvarchar    varchar,
+			testbigint     bigint,
+			testblob       blob,
+			testbool       boolean,
+			testfloat      float,
+			testdouble     double,
+			testint        int,
+			testdecimal    decimal,
+			testlist       list<text>,
+			testset        set<int>,
+			testmap        map<varchar, varchar>,
+			testvarint     varint,
+			testinet			 inet
+		)`); err != nil {
+		t.Fatal("create table:", err)
+	}
+	allRows := make([][]interface{}, 0)
+
+	bigInt := new(big.Int)
+	if _, ok := bigInt.SetString("830169365738487321165427203929228", 10); !ok {
+		t.Fatal("Failed setting bigint by string")
+	}
+
+	r := make([]interface{}, 0)
+	r = append(r, TimeUUID())
+	r = append(r, time.Now().Truncate(time.Millisecond).UTC())
+	r = append(r, "Test VarChar")
+	r = append(r, time.Now().Unix())
+	r = append(r, []byte("test blob"))
+	r = append(r, true)
+	r = append(r, float32(4.564))
+	r = append(r, float64(4.815162342))
+	r = append(r, 2343)
+	r = append(r, inf.NewDec(100, 0))
+	r = append(r, []string{"quux", "foo", "bar", "baz", "quux"})
+	r = append(r, []int{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	r = append(r, map[string]string{"field1": "val1", "field2": "val2", "field3": "val3"})
+	r = append(r, bigInt)
+	r = append(r, "213.212.2.19")
+	allRows = append(allRows, r)
+
+	if err := session.Query(`INSERT INTO slice_map_table (testuuid, testtimestamp, testvarchar, testbigint, testblob, testbool, testfloat, testdouble, testint, testdecimal, testlist, testset, testmap, testvarint, testinet) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14]).Exec(); err != nil {
+		t.Fatal("insert:", err)
+	}
+
+	returned, retErr := session.Query(`SELECT * FROM slice_map_table`).Iter().Slice()
+	if retErr != nil {
+		t.Fatal("select:", retErr)
+	} else if !reflect.DeepEqual(allRows, returned) {
+		t.Fatal("rows do not match")
+	}
+}

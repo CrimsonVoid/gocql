@@ -178,16 +178,30 @@ func typeCanBeNull(typ TypeInfo) bool {
 	return true
 }
 
+func dereferenceValue(ival interface{}) interface{} {
+	val := dereference(ival)
+	if valVal := reflect.ValueOf(val); valVal.Kind() == reflect.Slice {
+		valCopy := reflect.MakeSlice(valVal.Type(), valVal.Len(), valVal.Cap())
+		reflect.Copy(valCopy, valVal)
+		return valCopy.Interface()
+	} else {
+		return val
+	}
+}
+
+func (r *RowData) slice() []interface{} {
+	rowSlice := make([]interface{}, 0, len(r.Values))
+
+	for _, val := range r.Values {
+		rowSlice = append(rowSlice, dereferenceValue(val))
+	}
+
+	return rowSlice
+}
+
 func (r *RowData) rowMap(m map[string]interface{}) {
 	for i, column := range r.Columns {
-		val := dereference(r.Values[i])
-		if valVal := reflect.ValueOf(val); valVal.Kind() == reflect.Slice {
-			valCopy := reflect.MakeSlice(valVal.Type(), valVal.Len(), valVal.Cap())
-			reflect.Copy(valCopy, valVal)
-			m[column] = valCopy.Interface()
-		} else {
-			m[column] = val
-		}
+		m[column] = dereferenceValue(r.Values[i])
 	}
 }
 
@@ -225,6 +239,26 @@ func (iter *Iter) RowData() (RowData, error) {
 		Values:  values,
 	}
 	return rowData, nil
+}
+
+// Slice is a helper function to make the API easier to use
+// returns the data from the query in the form of [][]interface{}
+func (iter *Iter) Slice() ([][]interface{}, error) {
+	if iter.err != nil {
+		return nil, iter.err
+	}
+
+	// Not checking for the error because we just did
+	rowData, _ := iter.RowData()
+	dataToReturn := make([][]interface{}, 0)
+	for iter.Scan(rowData.Values...) {
+		dataToReturn = append(dataToReturn, rowData.slice())
+	}
+
+	if iter.err != nil {
+		return nil, iter.err
+	}
+	return dataToReturn, nil
 }
 
 // SliceMap is a helper function to make the API easier to use
